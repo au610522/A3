@@ -8,7 +8,12 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
-# test comment
+# setup not in opreator
+'%ni%' <- Negate('%in%')
+
+# load libraries
+library(tidyverse, pacman)
+
 ```
 
 ## Assignment 3 - Part 1 - Assessing voice in schizophrenia
@@ -99,27 +104,58 @@ Only then (when everything works) turn the code into a function and use map_df()
 See placeholder code here for help.
 
 ```{r}
-library(tidyverse)
 
-read_pitch <- function(filename) {
-    # load data
+# setup folder settings
+file_path = "data/Pitch/" # specifiy directory where files are stored
+pitch_files <- list.files(path = file_path, pattern=".txt$") # match .txt regular expression and make a list of all files
+
+# loop that creates dataframe from with needed info from all files in folder
+for (i in 1:length(pitch_files)) {
+    # initialize columns for full dataframe on first iteration
+    if (i == 1) {
+        columns <- c("Filename", "Study", "Participant", "Trial", "Diagnosis", "mean", "median", "sd", "min", "max", "iqr")
+        columns_n <- length(columns)
+        pitch_data <- data.frame(matrix(ncol = columns_n, nrow = 0))
+        colnames(pitch_data) <- columns }
     
-    # parse filename to extract study, diagnosis, subject and trial
+    # initialize temporary dataframe for each subject at each iteration
+    subject <- data.frame(matrix(ncol = columns_n, nrow = 1))
+    colnames(subject) <- columns
     
-    # extract pitch descriptors (mean, sd, iqr, etc)
+    # load single pitch file to temporary variable
+    file_name <- pitch_files[i]
+    file = paste(file_path, file_name, sep = "") # declare file path and filename
+    file_data <- read.table(file, header = T) # load file to temporary dataframe
     
-    # combine all this data in one dataset
-    return(data)
+    # parsing information from filename using regular expressions
+    subject$Filename <- file_name %>%
+        str_remove(pattern = "(.txt)") %>%
+        str_remove(pattern = "(_f0)")
+    # format name to match other dataframes
+
+    subject$Study <- str_extract(file_name, "Study\\d") %>% str_extract("\\d") %>% as.integer()
+    subject$Diagnosis <- str_extract(file_name, "D\\d") %>% str_extract("\\d") %>% as.integer()
+    subject$Participant <- str_extract(file_name, "S\\d{1,4}") %>% str_extract("\\d{1,4}") %>% as.integer()
+    subject$Trial <- str_extract(file_name, "T\\d{1,3}") %>% str_extract("\\d{1,3}") %>% as.integer()
+    
+    # calculating needed values
+    # add more if needed. Just remember to add column name to start of loop (columns variable)
+    subject$mean <- mean(file_data$f0)      # mean
+    subject$sd <- sd(file_data$f0)          # standard deviation
+    subject$min <- min(file_data$f0)        # minimum value
+    subject$max <- max(file_data$f0)        # maximum value
+    subject$median <- median(file_data$f0)  # median
+    subject$iqr <- IQR(file_data$f0)        # interquartile range
+    
+    # append to full dataframe at end of each iteration
+    pitch_data <- rbind(pitch_data, subject)
+    
+    # clean environment at the end of the loop
+    if (i == length(pitch_files)) {
+        rm(subject, file_data, columns, columns_n, file, file_name, i, file_path, pitch_files) }
 }
 
-# test it on just one file while writing the function
-test_data = read_pitch("Pitch/a_file_to_test.txt")
-
-# when you've created a function that works, you can
-pitch_data = list.files(path = "Assignment3/data/Pitch/",pattern = ".txt") %>% ## NB replace with your path to the files
-    purrr::map_df(read_pitch)
-
-write_csv(pitch_data, ...)
+write.csv(pitch_data, "pitch_data.csv", row.names = F)
 
 ```
 
@@ -127,15 +163,85 @@ write_csv(pitch_data, ...)
 ### Now you need to merge demographic/clinical, duration and pitch data
 
 ```{r}
-# Let's start with the demographic and clinical data
+# read the pitch_data we just saved
+pitch_data <- read.csv("pitch_data.csv", header = T, sep = ",")
+
+# read the demographic and clinical data
+demo_data <- read.csv("data/DemographicData.csv", header = T, sep = ";")
 
 # then duration data
+duration_data <- read.table("data/Articulation.txt", header = T, sep = ",")
+colnames(duration_data)[1] <- "Filename"
 
-# Finally the pitch data
+# identified 16 instances of wrong naming in the Articulation.txt file
+# did this by merging pitch and duration data by filename and identifying rows with NA's
+# data[rowSums(is.na(data)) > 0,]
+# renamed correctly manually afterwards
 
-# Now we merge them
+# afterwards we remove filenames from both dataframes, if they are not present in the other dataframe
+pitch_data <- pitch_data[pitch_data$Filename %in% duration_data$Filename,]
+duration_data <- duration_data[duration_data$Filename %in% pitch_data$Filename,]
 
-# Now we save them
+# finally we merge these two
+data <- merge(duration_data, pitch_data, by="Filename", all=T)
+
+# we can check for NA's
+data[rowSums(is.na(data)) > 0,]
+
+# now we want to merge demo_data into the 'data' dataframe
+demo_data <- demo_data[1:386,] # the last rows are NA for some reason
+
+# convert diagnosis to proper values
+demo_data$Diagnosis <- factor(demo_data$Diagnosis)
+levels(demo_data$Diagnosis) <- c(0, 1)
+# ma
+for (i in 1:length(demo_data$Participant)) {
+    if (i == 1) {
+        demo_data$Filename <- NA }
+    file_name <- paste("Study", demo_data$Study[i], "D", demo_data$Diagnosis[i], "S", demo_data$Participant[i], sep = "")
+    demo_data$Filename[i] <- file_name
+    if (i == length(demo_data)) {
+        rm(file_name) }
+}
+
+# now we can remove unneeded columns as we will use regular expression matching to assign values to dataframe
+demo_data <- demo_data[c(2, 5:13)]
+
+# Based on regular expression matching, we can assign rows from dataframe
+for (i in 1:length(demo_data$Filename)) {
+    if (i == 1) {
+        data$Gender <- NA
+        data$Age <- NA
+        data$Education <- NA
+        data$SANS <- NA
+        data$SAPS <- NA
+        data$VerbalIQ <- NA
+        data$NonVerbalIQ <- NA
+        data$TotalIQ <- NA
+    }
+    #worst fucking code ever written, but it works
+    data$Gender[str_detect(data$Filename, pattern = demo_data$Filename[i])] <- demo_data$Gender[i]
+    data$Age[str_detect(data$Filename, pattern = demo_data$Filename[i])] <- demo_data$Age[i]
+    data$Education[str_detect(data$Filename, pattern = demo_data$Filename[i])] <- demo_data$Education[i]
+    data$SANS[str_detect(data$Filename, pattern = demo_data$Filename[i])] <- demo_data$SANS[i]
+    data$SAPS[str_detect(data$Filename, pattern = demo_data$Filename[i])] <- demo_data$SAPS[i]
+    data$VerbalIQ[str_detect(data$Filename, pattern = demo_data$Filename[i])] <- demo_data$VerbalIQ[i]
+    data$NonVerbalIQ[str_detect(data$Filename, pattern = demo_data$Filename[i])] <- demo_data$NonVerbalIQ[i]
+    data$TotalIQ[str_detect(data$Filename, pattern = demo_data$Filename[i])] <- demo_data$TotalIQ[i]
+    
+    # cleanup enviroment
+    if (i == max(length(demo_data$Filename))) {
+        rm(file_name, i) }
+}
+
+# at last we can remove NA's
+data <- data[complete.cases(data), ] # 3000 rows removed lol
+
+# clean environment
+rm(demo_data, duration_data, pitch_data)
+
+# Now we save them, thank god
+write.csv(data, "data.csv", row.names = F)
 
 ```
 
