@@ -236,8 +236,8 @@ for (i in 1:length(demo_data$Filename)) {
         rm(file_name, i) }
 }
 
-# at last we can remove NA's
-data <- data[complete.cases(data), ] # 3000 rows removed lol
+# at last we can remove NA's - removes a lot of the studies becuse they do not have all the information 
+# data <- data[complete.cases(data), ] # 3000 rows removed lol
 
 # clean environment
 rm(demo_data, duration_data, pitch_data)
@@ -255,16 +255,24 @@ Finally, do the same by diagnosis and study, to assess systematic differences in
 I like to use group_by() %>% summarize() for quick summaries
 
 ```{r}
-summary(data)
+# only taking the first 4 studies
+newdata <- subset(data, Study < 5)
 
-data$Gender[data$Gender == '2'] <- 'F'
-data$Gender[data$Gender == '3'] <- 'M'
+summary(newdata)
 
-data$Diagnosis[data$Diagnosis == '0'] <- 'Control'
-data$Diagnosis[data$Diagnosis == '1'] <- 'Schizopgrenia'
+newdata$Gender[newdata$Gender == '2'] <- 'F'
+newdata$Gender[newdata$Gender == '3'] <- 'M'
+
+newdata$Diagnosis[newdata$Diagnosis == '0'] <- 'Control'
+newdata$Diagnosis[newdata$Diagnosis == '1'] <- 'Schizopgrenia'
+
+#Should we remove the once we do not know so we are sure to get all the information? 
+
+#Removing the NA so we get a value out instead of NA - losing a lot of information 
+newdata_clean <- newdata[complete.cases(newdata), ] 
 
 #counted by diagnosis for 1 trial
-info1 <- data %>%  subset(Trial == 1) %>%
+info1 <- newdata_clean %>%  subset(Trial == 1) %>%
     group_by(Diagnosis) %>%
     dplyr::summarise('Participants' = n(),
                      'Female' = sum(Gender == 'F'),
@@ -276,7 +284,7 @@ info1 <- data %>%  subset(Trial == 1) %>%
 # missing the 'social' information ... what is that 
 
 #Total number of recordings 
-info2 <- data %>% 
+info2 <- newdata_clean %>% 
     group_by(Diagnosis) %>%
     dplyr::summarise('Number of recordings' = n())
 
@@ -286,7 +294,7 @@ info_by_diagnosis
 
 
 #for diagnosis and study 
-info3 <- data %>%  subset(Trial == 1) %>%
+info3 <- newdata %>%  subset(Trial == 1) %>%
     group_by(Diagnosis, Study) %>%
     dplyr::summarise('Participants' = n(),
                      'Female' = sum(Gender == 'F'),
@@ -296,12 +304,13 @@ info3 <- data %>%  subset(Trial == 1) %>%
                      'SAPS' = mean(SAPS))
 
 
-info4 <- data %>% 
+info4 <- newdata %>% 
     group_by(Diagnosis, Study) %>%
     dplyr::summarise('Number of recordings' = n())
 
 info_by_diagnosis_and_study <- merge(info3,info4)
 info_by_diagnosis_and_study
+
 ```
 
 ## Now we can analyze the data
