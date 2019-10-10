@@ -255,20 +255,26 @@ Finally, do the same by diagnosis and study, to assess systematic differences in
 I like to use group_by() %>% summarize() for quick summaries
 
 ```{r}
-# only taking the first 4 studies
+#getting the data loaded
+data <- read.csv('data.csv')
+
+# only taking the first 4 studies of only danish participants 
 newdata <- subset(data, Study < 5)
 
 summary(newdata)
 
+# Giving the variables meaningfull names 
+# Gender
 newdata$Gender[newdata$Gender == '2'] <- 'F'
 newdata$Gender[newdata$Gender == '3'] <- 'M'
 
+#Diagnosis
 newdata$Diagnosis[newdata$Diagnosis == '0'] <- 'Control'
 newdata$Diagnosis[newdata$Diagnosis == '1'] <- 'Schizopgrenia'
 
-#Should we remove the once we do not know so we are sure to get all the information? 
 
-#Removing the NA so we get a value out instead of NA - losing a lot of information 
+
+#Removing the NA so we get a value out instead of NA - losing a lot of information, but will be usefull for the two first studies  
 newdata_clean <- newdata[complete.cases(newdata), ] 
 
 #counted by diagnosis for 1 trial
@@ -293,8 +299,26 @@ info_by_diagnosis <- merge(info1,info2)
 info_by_diagnosis
 
 
-#for diagnosis and study 
+
+# With all four studies
 info3 <- newdata %>%  subset(Trial == 1) %>%
+    group_by(Diagnosis) %>%
+    dplyr::summarise('Participants' = n(),
+                     'Female' = sum(Gender == 'F'),
+                     'Male' = sum(Gender == 'M'),
+                     'Age' = mean(Age, na.rm = T),
+                     'SANS' = mean(SANS),
+                     'SAPS' = mean(SAPS))
+
+info4 <- newdata %>% 
+    group_by(Diagnosis) %>%
+    dplyr::summarise('Number of recordings' = n())
+
+info_by_diagnosis_all <- merge(info3,info4)
+info_by_diagnosis_all
+
+#for diagnosis and study 
+info5 <- newdata %>%  subset(Trial == 1) %>%
     group_by(Diagnosis, Study) %>%
     dplyr::summarise('Participants' = n(),
                      'Female' = sum(Gender == 'F'),
@@ -304,11 +328,11 @@ info3 <- newdata %>%  subset(Trial == 1) %>%
                      'SAPS' = mean(SAPS))
 
 
-info4 <- newdata %>% 
+info6 <- newdata %>% 
     group_by(Diagnosis, Study) %>%
     dplyr::summarise('Number of recordings' = n())
 
-info_by_diagnosis_and_study <- merge(info3,info4)
+info_by_diagnosis_and_study <- merge(info5,info6)
 info_by_diagnosis_and_study
 
 ```
