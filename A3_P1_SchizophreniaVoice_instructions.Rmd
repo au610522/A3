@@ -258,6 +258,15 @@ I like to use group_by() %>% summarize() for quick summaries
 #getting the data loaded
 data <- read.csv('data.csv')
 
+# assigning uniq numbers to each participant
+newdata <- newdata %>% mutate (uPairID = paste(Participant, Study, sep = '_'), 
+                                          uPairID = as.numeric(as.factor(uPairID)),
+                                          uID = paste(Participant, Study, Diagnosis, sep = '_'),
+                                          uID = as.numeric(as.factor(uID)))
+
+newdata$Participant <- newdata$uID
+newdata <- newdata[1:26]
+
 # only taking the first 4 studies of only danish participants 
 newdata <- subset(data, Study < 5)
 
@@ -270,7 +279,7 @@ newdata$Gender[newdata$Gender == '3'] <- 'M'
 
 #Diagnosis
 newdata$Diagnosis[newdata$Diagnosis == '0'] <- 'Control'
-newdata$Diagnosis[newdata$Diagnosis == '1'] <- 'Schizopgrenia'
+newdata$Diagnosis[newdata$Diagnosis == '1'] <- 'Schizophrenia'
 
 
 
