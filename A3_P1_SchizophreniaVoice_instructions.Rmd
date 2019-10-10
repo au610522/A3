@@ -13,6 +13,8 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # load libraries
 library(tidyverse, pacman)
+pacman::p_load(tidyverse, lme4)
+p_load(lme4)
 
 ```
 
@@ -113,7 +115,7 @@ pitch_files <- list.files(path = file_path, pattern=".txt$") # match .txt regula
 for (i in 1:length(pitch_files)) {
     # initialize columns for full dataframe on first iteration
     if (i == 1) {
-        columns <- c("Filename", "Study", "Participant", "Trial", "Diagnosis", "mean", "median", "sd", "min", "max", "iqr")
+        columns <- c("Filename", "Study", "Participant", "Trial", "Diagnosis", "mean", "median", "sd", "min", "max", "Range", "iqr")
         columns_n <- length(columns)
         pitch_data <- data.frame(matrix(ncol = columns_n, nrow = 0))
         colnames(pitch_data) <- columns }
@@ -146,6 +148,7 @@ for (i in 1:length(pitch_files)) {
     subject$max <- max(file_data$f0)        # maximum value
     subject$median <- median(file_data$f0)  # median
     subject$iqr <- IQR(file_data$f0)        # interquartile range
+    subject$Range <- subject$max - subject$min 
     
     # append to full dataframe at end of each iteration
     pitch_data <- rbind(pitch_data, subject)
@@ -236,9 +239,6 @@ for (i in 1:length(demo_data$Filename)) {
         rm(file_name, i) }
 }
 
-# at last we can remove NA's - removes a lot of the studies becuse they do not have all the information 
-# data <- data[complete.cases(data), ] # 3000 rows removed lol
-
 # clean environment
 rm(demo_data, duration_data, pitch_data)
 
@@ -250,7 +250,7 @@ write.csv(data, "data.csv", row.names = F)
 ## Now we need to describe our sample
 
 First look at the missing data: we should exclude all recordings for which we do not have complete data.
-Then count the participants and recordinsgs by diagnosis, report their gender, age and symptom severity (SANS, SAPS and Social**** what is meant by social? )
+Then count the participants and recordings by diagnosis, report their gender, age and symptom severity (SANS, SAPS and Social**** what is meant by social? )
 Finally, do the same by diagnosis and study, to assess systematic differences in studies.
 I like to use group_by() %>% summarize() for quick summaries
 
@@ -258,17 +258,15 @@ I like to use group_by() %>% summarize() for quick summaries
 #getting the data loaded
 data <- read.csv('data.csv')
 
-# assigning uniq numbers to each participant
-newdata <- newdata %>% mutate (uPairID = paste(Participant, Study, sep = '_'), 
-                                          uPairID = as.numeric(as.factor(uPairID)),
-                                          uID = paste(Participant, Study, Diagnosis, sep = '_'),
-                                          uID = as.numeric(as.factor(uID)))
-
-newdata$Participant <- newdata$uID
-newdata <- newdata[1:26]
-
 # only taking the first 4 studies of only danish participants 
 newdata <- subset(data, Study < 5)
+
+# assigning uniq numbers to each participant
+newdata <- newdata %>% mutate (uPairID = paste(Participant, Study, sep = '_'),
+                               uPairID = as.numeric(as.factor(uPairID)), 
+                               uID = paste(Participant, Study, Diagnosis, sep = '_'), 
+                               uID = as.numeric(as.factor(uID)))
+
 
 summary(newdata)
 
@@ -290,11 +288,12 @@ newdata_clean <- newdata[complete.cases(newdata), ]
 info1 <- newdata_clean %>%  subset(Trial == 1) %>%
     group_by(Diagnosis) %>%
     dplyr::summarise('Participants' = n(),
-                     'Female' = sum(Gender == 'F'),
-                     'Male' = sum(Gender == 'M'),
+                     'Female' = sum(Gender == 'F',na.rm = T),
+                     'Male' = sum(Gender == 'M',na.rm = T),
                      'Age' = mean(Age, na.rm = T),
-                     'SANS' = mean(SANS),
-                     'SAPS' = mean(SAPS))
+                     'SANS' = mean(SANS,na.rm = T),
+                     'SAPS' = mean(SAPS,na.rm = T),
+                     'Range' = mean(Range, na.rm = T))
 
 # missing the 'social' information ... what is that 
 
@@ -313,11 +312,12 @@ info_by_diagnosis
 info3 <- newdata %>%  subset(Trial == 1) %>%
     group_by(Diagnosis) %>%
     dplyr::summarise('Participants' = n(),
-                     'Female' = sum(Gender == 'F'),
-                     'Male' = sum(Gender == 'M'),
+                     'Female' = sum(Gender == 'F',na.rm = T),
+                     'Male' = sum(Gender == 'M',na.rm = T),
                      'Age' = mean(Age, na.rm = T),
-                     'SANS' = mean(SANS),
-                     'SAPS' = mean(SAPS))
+                     'SANS' = mean(SANS, na.rm = T),
+                     'SAPS' = mean(SAPS, na.rm = T),
+                     'Range' = mean(Range, na.rm = T))
 
 info4 <- newdata %>% 
     group_by(Diagnosis) %>%
@@ -330,11 +330,12 @@ info_by_diagnosis_all
 info5 <- newdata %>%  subset(Trial == 1) %>%
     group_by(Diagnosis, Study) %>%
     dplyr::summarise('Participants' = n(),
-                     'Female' = sum(Gender == 'F'),
-                     'Male' = sum(Gender == 'M'),
+                     'Female' = sum(Gender == 'F', na.rm = T),
+                     'Male' = sum(Gender == 'M', na.rm = T),
                      'Age' = mean(Age, na.rm = T),
-                     'SANS' = mean(SANS),
-                     'SAPS' = mean(SAPS))
+                     'SANS' = mean(SANS, na.rm = T),
+                     'SAPS' = mean(SAPS, na.rm = T),
+                     'Range' = mean(Range, na.rm = T))
 
 
 info6 <- newdata %>% 
@@ -343,6 +344,8 @@ info6 <- newdata %>%
 
 info_by_diagnosis_and_study <- merge(info5,info6)
 info_by_diagnosis_and_study
+
+rm(info1,info2,info3,info4,info5,info6)
 
 ```
 
@@ -363,6 +366,30 @@ N.N.N.B. If you want to estimate the studies separately, you can try this syntax
 - Bonus points: cross-validate the models and report the betas and standard errors from all rounds to get an idea of how robust the estimates are. 
 
 ```{r}
+#pitch variability 
+pitch_model <- lmer(data = newdata,
+                    range ~ 1 + Diagnosis + (1 + Diagnosis|uPairID), REML =F )
+
+# We do not use gender due to the fact that range is not 
+
+#proportion of spoken time 
+
+
+#speech rate
+
+
+#pause duration
+
+
+newdata %>%  subset(Trial == 1) %>%
+    group_by(Diagnosis, Gender) %>%
+    dplyr::summarise('Participants' = n(),
+                     'Female' = sum(Gender == 'F', na.rm = T),
+                     'Male' = sum(Gender == 'M', na.rm = T),
+                     'Age' = mean(Age, na.rm = T),
+                     'SANS' = mean(SANS, na.rm = T),
+                     'SAPS' = mean(SAPS, na.rm = T),
+                     'Range' = mean(Range, na.rm = T))
 
 ```
 
