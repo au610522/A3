@@ -7,6 +7,12 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+library(pacman)
+p_load(tidyverse, caret)
+
+pitch <- read.csv("pitch_data.csv", header = T, sep = ",")
+data <- read.csv("data.csv", header = T, sep = ",")
 ```
 
 ## Assignment 3 - Part 2 - Diagnosing schizophrenia from voice
@@ -44,6 +50,7 @@ N.N.N.N.B. A more advanced solution could rely on the tidymodels set of packages
 
 
 ```{r}
+
 
 
 
