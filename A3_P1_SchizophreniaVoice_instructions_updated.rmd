@@ -419,6 +419,11 @@ lmer(data = data_jap, dur_pause ~ 1 + Diagnosis + (1|uID)) %>% summary()
 
 # Replace summary() with confint() for confidence intervals
 
+# save data for backup
+write.csv(data_dan, "data_dan.csv", row.names = F)
+write.csv(data_chi, "data_chi.csv", row.names = F)
+write.csv(data_jap, "data_jap.csv", row.names = F)
+
 ```
 
 ## N.B. Remember to save the acoustic features of voice in a separate file, so to be able to load them next time

@@ -11,8 +11,13 @@ knitr::opts_chunk$set(echo = TRUE)
 library(pacman)
 p_load(tidyverse, caret)
 
-pitch <- read.csv("pitch_data.csv", header = T, sep = ",")
 data <- read.csv("data.csv", header = T, sep = ",")
+data_dan <- read.csv("data_dan.csv", header = T, sep = ",")
+data_chi <- read.csv("data_chi.csv", header = T, sep = ",")
+data_jap <- read.csv("data_jap.csv", header = T, sep = ",")
+
+
+
 ```
 
 ## Assignment 3 - Part 2 - Diagnosing schizophrenia from voice
@@ -40,7 +45,7 @@ https://machinelearningmastery.com/machine-learning-ensembles-with-r/
 
 We first want to build a logistic regression to see whether you can diagnose schizophrenia from your best acoustic feature. Let's use the full dataset and calculate the different performance measures (accuracy, sensitivity, specificity, PPV, NPV, ROC curve). You need to think carefully as to how we should (or not) use study and subject ID.
 
-Then cross-validate the logistic regression and re-calculate performance on the testing folds. N.B. The cross-validation functions you already have should be tweaked: you need to calculate these new performance measures. Alternatively, the groupdata2 and cvms package created by Ludvig are an easy solution. 
+Then cross-validate the logistic regression and re-calculate performance on the testing folds. N.B. The cross-validation functions you already have should be tweaked: you need to calculate these new performance measures. Alternatively, the groupdata2 and cvms package created by Ludvig are an easy solution.
 
 N.B. the predict() function generates log odds (the full scale between minus and plus infinity). Log odds > 0 indicates a choice of 1, below a choice of 0.
 N.N.B. you need to decide whether calculate performance on each single test fold or save all the prediction for test folds in one datase, so to calculate overall performance.
