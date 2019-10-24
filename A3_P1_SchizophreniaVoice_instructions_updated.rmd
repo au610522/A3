@@ -227,7 +227,7 @@ for (i in 1:length(demo_data$Filename)) {
         data$SAPS <- NA
         data$VerbalIQ <- NA
         data$NonVerbalIQ <- NA
-        data$TotalIQ <- NA
+        data$TotalIQ <- NA # We make all rows NA to make the dataframe and then fill it in                                 afterwards
     }
     #worst fucking code ever written, but it works
     data$Gender[str_detect(data$Filename, pattern = demo_data$Filename[i])] <- demo_data$Gender[i]
@@ -263,24 +263,36 @@ Finally, do the same by diagnosis and study, to assess systematic differences in
 I like to use group_by() %>% summarize() for quick summaries
 
 ```{r}
+
+# Changing the values for gender to F and M.
+data$Gender[data$Gender == '2'] <- 'F'
+data$Gender[data$Gender == '3'] <- 'M'
+
+# Changing the values for diagnosis to control and schizophrenia
+data$Diagnosis[data$Diagnosis == '0'] <- 'Control'
+data$Diagnosis[data$Diagnosis == '1'] <- 'Schizophrenia'
+
 # Only taking the first 4 studies
-newdata <- subset(data, Study < 5)
+danishData <- subset(data, Study < 5)
 
-summary(newdata)
-
-newdata$Gender[newdata$Gender == '2'] <- 'F'
-newdata$Gender[newdata$Gender == '3'] <- 'M'
-
-newdata$Diagnosis[newdata$Diagnosis == '0'] <- 'Control'
-newdata$Diagnosis[newdata$Diagnosis == '1'] <- 'Schizophrenia'
+# Summary
+summary(danishData)
 
 # Should we remove the ones we do not know so we are sure to get all the information? 
 
-# Removing the NA so we get a value out instead of NA - losing a lot of information 
-newdata_clean <- newdata[complete.cases(newdata), ] 
+# Removing the NA's (if any) from the features that we want to look into. 
+danishData <- danishData[complete.cases(danishData[3:18]), ] # complete cases should contain columns 3 to 18. No cases are dropped.
+
+# Pairing the participants by their matched control within study so that they are different between studies
+danishData <- danishData %>% mutate(uPairID = paste(Participant, Study, sep = "_"), 
+                       uPairID = as.numeric(as.factor(uPairID)), 
+                       uID = paste(Participant, Study, Diagnosis, sep = "_"), 
+                       uID = as.numeric(as.factor(uID)))
+# Makes both a column with a unique id for participant(uID) and a column with unique id for paired schizophrenics and matched controls (uPairID). 
+
 
 # Counted by diagnosis for 1 trial
-info1 <- newdata_clean %>%  subset(Trial == 1) %>%
+info1 <- danishData %>%  subset(Trial == 1) %>%
     group_by(Diagnosis) %>%
     dplyr::summarise('Participants' = n(),
                      'Female' = sum(Gender == 'F'),
@@ -292,7 +304,7 @@ info1 <- newdata_clean %>%  subset(Trial == 1) %>%
 # Missing the 'social' information ... what is that 
 
 # Total number of recordings 
-info2 <- newdata_clean %>% 
+info2 <- danishData_clean %>% 
     group_by(Diagnosis) %>%
     dplyr::summarise('Number of recordings' = n())
 
@@ -302,7 +314,7 @@ info_by_diagnosis
 
 
 # For diagnosis and study 
-info3 <- newdata %>%  subset(Trial == 1) %>%
+info3 <- danishData %>%  subset(Trial == 1) %>%
     group_by(Diagnosis, Study) %>%
     dplyr::summarise('Participants' = n(),
                      'Female' = sum(Gender == 'F'),
@@ -312,15 +324,12 @@ info3 <- newdata %>%  subset(Trial == 1) %>%
                      'SAPS' = mean(SAPS))
 
 
-info4 <- newdata %>% 
+info4 <- danishData %>% 
     group_by(Diagnosis, Study) %>%
     dplyr::summarise('Number of recordings' = n())
 
 info_by_diagnosis_and_study <- merge(info3,info4)
 info_by_diagnosis_and_study
-
-# Now we save them, thank god
-write.csv(newdata, "newdata.csv", row.names = F)
 ```
 
 ## Now we can analyze the data
@@ -341,13 +350,28 @@ N.N.N.B. If you want to estimate the studies separately, you can try this syntax
 - Bonus points: cross-validate the models and report the betas and standard errors from all rounds to get an idea of how robust the estimates are. 
 
 ```{r}
-   set.seed(1)
-   x <- runif(7)
+set.seed(1)
+# Making new column for pause duration
+danishData$pause_dur <- (danishData$dur..s.- danishData$phonationtime..s.)
 
-   # Manually scaling
-   (x - mean(x)) / sd(x)
 
-   scale(x)
+# Scaling the features
+danishData$iqr_s <- scale(danishData$iqr) # Representative of pitch variability
+danishData$propSpoken_s <- scale(danishData$phonationtime..s.) # Proportion of spoken time
+danishData$speechrate_s <- scale(danishData$speechrate..nsyll.dur.) # Speech rate
+danishData$pause_dur_s <- scale(danishData$pause_dur) # Duration of pause
+
+# Building the models for the different features
+# Model for inter quantile range
+m1 <- lmer(data = danishData, iqr_s ~ 0 + Study + Study:Diagnosis + (1|uPairID)) 
+# Model for proportion of spoken time 
+m2 <- lmer(data = danishData, propSpoken_s ~ 0 + Study + Study:Diagnosis + (1|uPairID))
+# Model for speech rate
+m3 <- lmer(data = danishData, speechrate_s ~ 0 + Study + Study:Diagnosis + (1|uPairID))
+# Model for duration of pause
+m4 <- lmer(data = danishData, pause_dur_s ~ 0 + Study + Study:Diagnosis + (1|uPairID))
+
+
 ```
 
 ## N.B. Remember to save the acoustic features of voice in a separate file, so to be able to load them next time
