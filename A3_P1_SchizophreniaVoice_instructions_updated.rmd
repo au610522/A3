@@ -12,8 +12,8 @@ knitr::opts_chunk$set(echo = TRUE)
 '%ni%' <- Negate('%in%')
 
 # load libraries
-library(tidyverse, pacman)
-pacman::p_load(lme4)
+library(pacman)
+pacman::p_load(lme4, tidyverse)
 ```
 
 ## Assignment 3 - Part 1 - Assessing voice in schizophrenia
@@ -218,7 +218,6 @@ for (i in 1:length(demo_data$Participant)) {
 demo_data <- demo_data[c(2, 5:13)]
 
 # Based on regular expression matching, we can assign rows from dataframe
-
 for (i in 1:length(demo_data$Filename)) {
     if (i == 1) {
         data$Gender <- NA
@@ -230,7 +229,7 @@ for (i in 1:length(demo_data$Filename)) {
         data$NonVerbalIQ <- NA
         data$TotalIQ <- NA # We make all rows NA to make the dataframe and then fill it in                                 afterwards
     }
-    #worst fucking code ever written, but it works
+    # not pretty code, but it works
     data$Gender[str_detect(data$Filename, pattern = demo_data$Filename[i])] <- demo_data$Gender[i]
     data$Age[str_detect(data$Filename, pattern = demo_data$Filename[i])] <- demo_data$Age[i]
     data$Education[str_detect(data$Filename, pattern = demo_data$Filename[i])] <- demo_data$Education[i]
@@ -245,14 +244,43 @@ for (i in 1:length(demo_data$Filename)) {
         rm(file_name, i) }
 }
 
-# at last we can remove NA's - removes a lot of the studies because they do not have all the information 
+# if we want, we can remove NA's - N.B. removes a lot of the studies because they do not have all the information 
 # data <- data[complete.cases(data), ] # 3000 rows removed lol
 
 # clean environment
 rm(demo_data, duration_data, pitch_data)
 
-# Now we save them, thank god
-write.csv(data, "data.csv", row.names = F)
+
+### ORGANIZING DATA VALUES ###
+# Changing the values for gender to F and M.
+data$Gender[data$Gender == '2'] <- 'F'
+data$Gender[data$Gender == '3'] <- 'M'
+
+# Changing the values for diagnosis to control and schizophrenia
+data$Diagnosis[data$Diagnosis == '0'] <- 'CON'
+data$Diagnosis[data$Diagnosis == '1'] <- 'SCZ'
+
+
+### ASSIGNING UNIQUE ID'S ###
+# Pairing the participants by their matched control within study so that they are different between studies
+data <- data %>% mutate(uPairID = paste(Participant, Study, sep = "_"), 
+                       uPairID = as.numeric(as.factor(uPairID)), 
+                       uID = paste(Participant, Study, Diagnosis, sep = "_"), 
+                       uID = as.numeric(as.factor(uID)))
+# Makes both a column with a unique id for participant(uID) and a column with unique id for paired schizophrenics and matched controls (uPairID).
+
+
+### RENAMING COLUMN NAMES ###
+colnames(data)[4] <- "dur_total"
+colnames(data)[5] <- "dur_speech"
+colnames(data)[6] <- "speech_rate"
+colnames(data)[7] <- "articulation_rate"
+colnames(data)[8] <- "avg_syll_dur"
+
+
+### SAVING ###
+# save the data for backup
+#write.csv(data, "data.csv", row.names = F)
 
 ```
 
@@ -265,50 +293,9 @@ I like to use group_by() %>% summarize() for quick summaries
 
 ```{r}
 
-# Changing the values for gender to F and M.
-data$Gender[data$Gender == '2'] <- 'F'
-data$Gender[data$Gender == '3'] <- 'M'
-
-# Changing the values for diagnosis to control and schizophrenia
-data$Diagnosis[data$Diagnosis == '0'] <- 'Control'
-data$Diagnosis[data$Diagnosis == '1'] <- 'Schizophrenia'
-
-
-# Pairing the participants by their matched control within study so that they are different between studies
-data <- data %>% mutate(uPairID = paste(Participant, Study, sep = "_"), 
-                       uPairID = as.numeric(as.factor(uPairID)), 
-                       uID = paste(Participant, Study, Diagnosis, sep = "_"), 
-                       uID = as.numeric(as.factor(uID)))
-# Makes both a column with a unique id for participant(uID) and a column with unique id for paired schizophrenics and matched controls (uPairID). 
-
-# Removing the NA's (if any) from the features that we want to look into. 
-#data <- data[complete.cases(data[3:19]), ] # complete cases should contain columns 3 to 19. 8 observations are dropped.
-
-# Counted by diagnosis for 1 trial
-info1 <- data %>%  subset(Trial == 1) %>%
-    group_by(Diagnosis) %>%
-    dplyr::summarise('Participants' = n(),
-                     'Female' = sum(Gender == 'F'),
-                     'Male' = sum(Gender == 'M'),
-                     'Age' = mean(Age, na.rm = T),
-                     'SANS' = mean(SANS),
-                     'SAPS' = mean(SAPS),
-                     'Verbal IQ' = mean(VerbalIQ),
-                     'Nonverbal IQ' = mean(NonVerbalIQ))
-
-
-# Total number of recordings 
-info2 <- data %>% 
-    group_by(Diagnosis) %>%
-    dplyr::summarise('Number of recordings' = n())
-
-
-info_by_diagnosis <- merge(info1,info2)
-info_by_diagnosis
-
-
-# For diagnosis and study 
-info3 <- data %>%  subset(Trial == 1) %>%
+### SUMMARIZING DATA ###
+# Get information by diagnosis and study
+data_info_demo <- data %>%  subset(Trial == 1) %>%
     group_by(Diagnosis, Study) %>%
     dplyr::summarise('Participants' = n(),
                      'Female' = sum(Gender == 'F'),
@@ -319,13 +306,17 @@ info3 <- data %>%  subset(Trial == 1) %>%
                      'Verbal IQ' = mean(VerbalIQ),
                      'Nonverbal IQ' = mean(NonVerbalIQ))
 
-
-info4 <- data %>% 
+# Summarize to get number of trials
+data_info_trails <- data %>% 
     group_by(Diagnosis, Study) %>%
     dplyr::summarise('Number of recordings' = n())
+data_info <- merge(data_info_demo, data_info_trails) # combine previous to new dataframe
 
-info_by_diagnosis_and_study <- merge(info3,info4)
-info_by_diagnosis_and_study
+# clean environment
+rm(data_info_demo, data_info_trails)
+
+# print the data
+data_info
 
 ```
 
@@ -347,87 +338,87 @@ N.N.N.B. If you want to estimate the studies separately, you can try this syntax
 - Bonus points: cross-validate the models and report the betas and standard errors from all rounds to get an idea of how robust the estimates are. 
 
 ```{r}
-# Making new column for pause duration
-data$pause_dur <- 0 # Assigning "0" to all rows
 
+### PAUSE DURATION ###
+# initialize column with 0 in all rows
+data$dur_pause <- as.numeric(0)
+# make sure all needed columns are right data type
+data$npause <- as.integer(data$npause)
+data$dur_total <- as.numeric(data$dur_total)
+data$dur_speech <- as.numeric(data$dur_speech)
 # For loop to assign pause duration for all rows
-for (i in data$uID) {
-    if (data$npause[i] == 0) { # If the number of pauses are 0 we assign 0.
-        data$pause_dur[i] <- 0 }
+for (i in 1:length(data$uID)) {
+    if (data$npause[i] == 0) { # If the number of pauses are 0 we assign 0 (to avoid division by zero).
+        data$dur_pause[i] <- 0 }
     else { # If not, we assign the average duration of the pauses
-        data$pause_dur[i] <- round((data$dur..s.[i] - data$phonationtime..s.[i]) / (data$npause[i]), 2) }}
+        data$dur_pause[i] <- round((data$dur_total[i] - data$dur_speech[i]) / (data$npause[i]), 2) }}
+rm(i) # clean environment
 
-
-# Only taking the first 4 studies
-danishData <- subset(data, Study < 5)
+### ANALYSIS - DANISH ###
+# Subsetting the Danish studies
+data_dan <- subset(data, Study < 5)
 
 # Scaling the features
-danishData$iqr_s <- scale(danishData$iqr) # Representative of pitch variability
-danishData$propSpoken_s <- scale(danishData$phonationtime..s.) # Proportion of spoken time
-danishData$speechrate_s <- scale(danishData$speechrate..nsyll.dur.) # Speech rate
-danishData$pause_dur_s <- scale(danishData$pause_dur) # Duration of pause
+data_dan$iqr <- scale(data_dan$iqr) # Representative of pitch variability
+data_dan$dur_speech <- scale(data_dan$dur_speech) # Proportion of spoken time
+data_dan$speech_rate <- scale(data_dan$speech_rate) # Speech rate
+data_dan$dur_pause <- scale(data_dan$dur_pause) # Duration of pause
 
 # Building the models for the different features
 # Model for inter quantile range
-m1 <- lmer(data = danishData, iqr_s ~ 1 + Diagnosis + (1|uID))
+lmer(data = data_dan, iqr ~ 1 + Diagnosis + (1|uID)) %>% summary()
 # Model for proportion of spoken time 
-m2 <- lmer(data = danishData, propSpoken_s ~ 1 + Diagnosis + (1|uID))
+lmer(data = data_dan, dur_speech ~ 1 + Diagnosis + (1|uID))  %>% summary()
 # Model for speech rate
-m3 <- lmer(data = danishData, speechrate_s ~ 1 + Diagnosis + (1|uID))
+lmer(data = data_dan, speech_rate ~ 1 + Diagnosis + (1|uID))  %>% summary()
 # Model for duration of pause
-m4 <- lmer(data = danishData, pause_dur_s ~ 1 + Diagnosis + (1|uID))
+lmer(data = data_dan, dur_pause ~ 1 + Diagnosis + (1|uID)) %>% summary()
 
 
-# Only taking study 5 and 6
-chineseData <- subset(data, Study == 5 | Study == 6)
+### ANALYSIS - CHINESE ###
+# Subsetting the Chinese studies
+data_chi <- subset(data, Study == 5 | Study == 6)
 
-for (i in chineseData$uID) {
-    if (chineseData$npause[i] == 0) { # If the number of pauses are 0 we assign 0.
-        chineseData$pause_dur[i] <- 0 }
-    else { # If not, we assign the average duration of the pauses
-        chineseData$pause_dur[i] <- round((chineseData$dur..s.[i] - chineseData$phonationtime..s.[i]) / (chineseData$npause[i]), 2) }}
 # Scaling the features
-chineseData$iqr_s <- scale(chineseData$iqr) # Representative of pitch variability
-chineseData$propSpoken_s <- scale(chineseData$phonationtime..s.) # Proportion of spoken time
-chineseData$speechrate_s <- scale(chineseData$speechrate..nsyll.dur.) # Speech rate
-chineseData$pause_dur_s <- scale(chineseData$pause_dur) # Duration of pause
+data_chi$iqr <- scale(data_chi$iqr)
+data_chi$dur_speech <- scale(data_chi$dur_speech)
+data_chi$speech_rate <- scale(data_chi$speech_rate)
+data_chi$dur_pause <- scale(data_chi$dur_pause)
 
 # Building the models for the different features
 # Model for inter quantile range
-m5 <- lmer(data = chineseData, iqr_s ~ 1 + Diagnosis + (1|uID)) 
+lmer(data = data_chi, iqr ~ 1 + Diagnosis + (1|uID)) %>% summary()
 # Model for proportion of spoken time 
-m6 <- lmer(data = chineseData, propSpoken_s ~ 1 + Diagnosis + (1|uID))
+lmer(data = data_chi, dur_speech ~ 1 + Diagnosis + (1|uID)) %>% summary()
 # Model for speech rate
-m7 <- lmer(data = chineseData, speechrate_s ~ 1 + Diagnosis + (1|uID))
+lmer(data = data_chi, speech_rate ~ 1 + Diagnosis + (1|uID)) %>% summary()
 # Model for duration of pause
-m8 <- lmer(data = chineseData, pause_dur_s ~ 1 + Diagnosis + (1|uID))
+lmer(data = data_chi, dur_pause ~ 1 + Diagnosis + (1|uID)) %>% summary()
 
 
-# Only taking study 7
-japaneseData <- subset(data, Study > 6)
+### ANALYSIS - JAPANESE ###
+# Subsetting the Japanese studies
+data_jap <- subset(data, Study > 6)
 
 # Scaling the features
-japaneseData$iqr_s <- scale(japaneseData$iqr) # Representative of pitch variability
-japaneseData$propSpoken_s <- scale(japaneseData$phonationtime..s.) # Proportion of spoken time
-japaneseData$speechrate_s <- scale(japaneseData$speechrate..nsyll.dur.) # Speech rate
-japaneseData$pause_dur_s <- scale(japaneseData$pause_dur) # Duration of pause
+data_jap$iqr <- scale(data_jap$iqr)
+data_jap$dur_speech <- scale(data_jap$dur_speech)
+data_jap$speech_rate <- scale(data_jap$speech_rate)
+data_jap$dur_pause <- scale(data_jap$dur_pause)
 
 # Building the models for the different features
 # Model for inter quantile range
-m9 <- lmer(data = japaneseData, iqr_s ~ 1 + Diagnosis + (1|uID)) 
+lmer(data = data_jap, iqr ~ 1 + Diagnosis + (1|uID)) %>% summary()
 # Model for proportion of spoken time 
-m10 <- lmer(data = japaneseData, propSpoken_s ~ 1 + Diagnosis + (1|uID))
+lmer(data = data_jap, dur_speech ~ 1 + Diagnosis + (1|uID)) %>% summary()
 # Model for speech rate
-m11 <- lmer(data = japaneseData, speechrate_s ~ 1 + Diagnosis + (1|uID))
+lmer(data = data_jap, speech_rate ~ 1 + Diagnosis + (1|uID)) %>% summary()
 # Model for duration of pause
-m12 <- lmer(data = japaneseData, pause_dur_s ~ 1 + Diagnosis + (1|uID))
+lmer(data = data_jap, dur_pause ~ 1 + Diagnosis + (1|uID)) %>% summary()
 
 
-summary(m8)
-# pitch variability (lower, Hedges' g: -0.55, 95% CIs: -1.06, 0.09)
-# proportion of spoken time (lower, Hedges' g: -1.26, 95% CIs: -2.26, 0.25)
-# speech rate (slower, Hedges' g: -0.75, 95% CIs: -1.51, 0.04)
-# pause duration (longer, Hedges' g: 1.89, 95% CIs: 0.72, 3.21). (Duration - Spoken Duration) / PauseN
+# Replace summary() with confint() for confidence intervals
+
 ```
 
 ## N.B. Remember to save the acoustic features of voice in a separate file, so to be able to load them next time
