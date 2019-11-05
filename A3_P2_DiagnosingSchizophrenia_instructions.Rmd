@@ -128,46 +128,78 @@ N.N.N.N.B. A more advanced solution could rely on the tidymodels set of packages
 
 
 ```{r}
-dat <- groupdata2::fold(train, k = 4,
-                                     cat_col = 'Diagnosis',
-                                     id_col = 'uID')
-dat[["Diagnosis"]] <- factor(dat[["Diagnosis"]])
 
-# Create a model function (random forest in this case)
-# that takes train_data and formula as arguments
-# and returns the fitted model object
-rf_model_fn <- function(train_data, formula){
-    rand_forest(trees = 100, mode = "classification") %>%
-      set_engine("randomForest") %>%
-      fit(formula, data = train_data)
-  }
+# Making folds for the datasets in each language
 
-# Create a predict function
-# Usually just wraps stats::predict
-# Takes test_data, model and formula arguments
-# and returns vector with probabilities of class 1
-# (this depends on the type of task, gaussian, binomial or multinomial)
-rf_predict_fn <- function(test_data, model, formula){
-    stats::predict(object = model, new_data = test_data, type = "prob")[[2]]
-  }
+data_dan$folds <- 0
+# Create folds for each diagnosis for Danish studies
+data_dan$folds[data_dan$Diagnosis == "CON"] <- createFolds(unique(data_dan$uID[data_dan$Diagnosis == "CON"]), k = 5, list = FALSE) # list = FALSE returns vector instead of list
 
-# Now cross-validation
-# Note the different argument names from cross_validate()
-CV <- cross_validate_fn(
-  dat,
-  model_fn = rf_model_fn,
-  formulas = c("Diagnosis ~ iqr", "Diagnosis ~ dur_pause"),
-  fold_cols = '.folds',
-  type = 'binomial',
-  predict_fn = rf_predict_fn
-)
-#inspect data
-CV %>% 
-  select(1:6) %>% #select only the first 6 cols
-  head(2) %>% #select only the first two rows
-  knitr::kable()
+data_dan$folds[data_dan$Diagnosis == "SCZ"] <- createFolds(unique(data_dan$uID[data_dan$Diagnosis == "SCZ"]), k = 5, list = FALSE)
 
-CV
+
+data_chi$folds <- 0
+# Create folds for each diagnosis for Chinese studies
+data_chi$folds[data_chi$Diagnosis == "CON"] <- createFolds(unique(data_chi$uID[data_chi$Diagnosis == "CON"]), k = 5, list = FALSE) # list = FALSE returns vector instead of list
+
+data_chi$folds[data_chi$Diagnosis == "SCZ"] <- createFolds(unique(data_chi$uID[data_chi$Diagnosis == "SCZ"]), k = 5, list = FALSE)
+
+
+data_jap$folds <- 0
+# Create folds for each diagnosis for Japanese studies
+data_jap$folds[data_jap$Diagnosis == "CON"] <- createFolds(unique(data_jap$uID[data_jap$Diagnosis == "CON"]), k = 5, list = FALSE) # list = FALSE returns vector instead of list
+
+data_jap$folds[data_jap$Diagnosis == "SCZ"] <- createFolds(unique(data_jap$uID[data_jap$Diagnosis == "SCZ"]), k = 5, list = FALSE)
+
+# Binding the data frames together
+data <- rbind(data_dan, data_chi, data_jap)
+
+
+
+
+
+
+
+# dat <- groupdata2::fold(train, k = 4,
+#                                      cat_col = 'Diagnosis',
+#                                      id_col = 'uID')
+# dat[["Diagnosis"]] <- factor(dat[["Diagnosis"]])
+# 
+# # Create a model function (random forest in this case)
+# # that takes train_data and formula as arguments
+# # and returns the fitted model object
+# rf_model_fn <- function(train_data, formula){
+#     rand_forest(trees = 100, mode = "classification") %>%
+#       set_engine("glm") %>%
+#       fit(formula, data = train_data)
+#   }
+# 
+# # Create a predict function
+# # Usually just wraps stats::predict
+# # Takes test_data, model and formula arguments
+# # and returns vector with probabilities of class 1
+# # (this depends on the type of task, gaussian, binomial or multinomial)
+# rf_predict_fn <- function(test_data, model, formula){
+#     stats::predict(object = model, new_data = test_data, type = "prob")[[2]]
+#   }
+# 
+# # Now cross-validation
+# # Note the different argument names from cross_validate()
+# CV <- cross_validate_fn(
+#   dat,
+#   model_fn = rf_model_fn,
+#   formulas = c("Diagnosis ~ iqr", "Diagnosis ~ dur_pause"),
+#   fold_cols = '.folds',
+#   type = 'binomial',
+#   predict_fn = rf_predict_fn
+# )
+# #inspect data
+# CV %>% 
+#   select(1:6) %>% #select only the first 6 cols
+#   head(2) %>% #select only the first two rows
+#   knitr::kable()
+# 
+# CV
 
 
 ```
