@@ -10,7 +10,8 @@ knitr::opts_chunk$set(echo = TRUE)
 
 library(pacman)
 p_load(tidyverse, caret, lme4)
-pacman::p_load(pacman, groupdata2, tidymodels)
+pacman::p_load(pacman, groupdata2, tidymodels, cvms)
+pacman::p_load(randomForest)
 
 
 data_dan <- read.csv("data_dan.csv", header = T, sep = ",")
@@ -75,7 +76,7 @@ log_fit <-
   logistic_reg() %>%
   set_mode("classification") %>% 
   set_engine("glm") %>%
-  fit(Diagnosis ~ dur_pause + (1|uID), data = train)
+  fit(Diagnosis ~ 0 + uID + uID:iqr, data = train)
 
 
 # Predict class
@@ -127,7 +128,46 @@ N.N.N.N.B. A more advanced solution could rely on the tidymodels set of packages
 
 
 ```{r}
+dat <- groupdata2::fold(train, k = 4,
+                                     cat_col = 'Diagnosis',
+                                     id_col = 'uID')
+dat[["Diagnosis"]] <- factor(dat[["Diagnosis"]])
 
+# Create a model function (random forest in this case)
+# that takes train_data and formula as arguments
+# and returns the fitted model object
+rf_model_fn <- function(train_data, formula){
+    rand_forest(trees = 100, mode = "classification") %>%
+      set_engine("randomForest") %>%
+      fit(formula, data = train_data)
+  }
+
+# Create a predict function
+# Usually just wraps stats::predict
+# Takes test_data, model and formula arguments
+# and returns vector with probabilities of class 1
+# (this depends on the type of task, gaussian, binomial or multinomial)
+rf_predict_fn <- function(test_data, model, formula){
+    stats::predict(object = model, new_data = test_data, type = "prob")[[2]]
+  }
+
+# Now cross-validation
+# Note the different argument names from cross_validate()
+CV <- cross_validate_fn(
+  dat,
+  model_fn = rf_model_fn,
+  formulas = c("Diagnosis ~ iqr", "Diagnosis ~ dur_pause"),
+  fold_cols = '.folds',
+  type = 'binomial',
+  predict_fn = rf_predict_fn
+)
+#inspect data
+CV %>% 
+  select(1:6) %>% #select only the first 6 cols
+  head(2) %>% #select only the first two rows
+  knitr::kable()
+
+CV
 
 
 ```
