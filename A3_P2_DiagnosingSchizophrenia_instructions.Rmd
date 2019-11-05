@@ -9,14 +9,19 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 
 library(pacman)
-p_load(tidyverse, caret)
+p_load(tidyverse, caret, lme4)
+pacman::p_load(pacman, groupdata2, tidymodels)
 
-data <- read.csv("data.csv", header = T, sep = ",")
+
 data_dan <- read.csv("data_dan.csv", header = T, sep = ",")
 data_chi <- read.csv("data_chi.csv", header = T, sep = ",")
 data_jap <- read.csv("data_jap.csv", header = T, sep = ",")
 
-
+# Binding together the datasets from the different languages
+data_dan$language <- "Danish"
+data_chi$language <- "Chinese"
+data_jap$language <- "Japanese"
+data <- rbind(data_dan, data_chi, data_jap)
 
 ```
 
@@ -44,18 +49,84 @@ https://machinelearningmastery.com/machine-learning-ensembles-with-r/
 ### Let's start
 
 We first want to build a logistic regression to see whether you can diagnose schizophrenia from your best acoustic feature. Let's use the full dataset and calculate the different performance measures (accuracy, sensitivity, specificity, PPV, NPV, ROC curve). You need to think carefully as to how we should (or not) use study and subject ID.
+```{r}
+# Set seed for randomization
+set.seed(5)
+
+# Create test sets and training sets from each dataframe
+df_list <- partition(data, p = 0.2, cat_col = c("Diagnosis", "language"), id_col = "uID", list_out = T)
+test = df_list[[1]]
+train = df_list[[2]]
+
+# Clean environment
+rm(df_list, data_chi, data_dan, data_jap)
+
+# Remove columns from train set
+#train <- train %>%
+#  select(-Filename, -Study, -uID, -uPairID)
+
+# Remove columns from test set
+#test <- test %>%
+#  select(-Filename, -Study, -uID, -uPairID)
+
+
+#logistic regression on train data
+log_fit <- 
+  logistic_reg() %>%
+  set_mode("classification") %>% 
+  set_engine("glm") %>%
+  fit(Diagnosis ~ dur_pause + (1|uID), data = train)
+
+
+# Predict class
+log_class <- log_fit %>%
+  predict(new_data = test)
+
+# Get prob of class
+log_prop <- log_fit %>%
+  predict(new_data = test, type = "prob") %>%
+  pull(.pred_SCZ)
+
+
+#get multiple at once
+test_results <- 
+  test %>% 
+  select(Diagnosis) %>% 
+  mutate(
+    log_class = predict(log_fit, new_data = test) %>% 
+      pull(.pred_class),
+    log_prob  = predict(log_fit, new_data = test, type = "prob") %>% 
+      pull(.pred_SCZ),
+  )
+
+test_results %>% 
+  head(5) %>% 
+  knitr::kable() #examine the first 5
+
+metrics(test_results, truth = Diagnosis, estimate = log_class) %>% 
+  knitr::kable()
+
+# Making the ROC curve
+test_results %>%
+  roc_curve(truth = Diagnosis, log_prob) %>% 
+  autoplot()
+
+# Confusion matrix
+test$pred <- log_class$.pred_class # adding the predicted classes to the test data frame
+conf_mat(test, truth = "Diagnosis", estimate = "pred")
+```
+
 
 Then cross-validate the logistic regression and re-calculate performance on the testing folds. N.B. The cross-validation functions you already have should be tweaked: you need to calculate these new performance measures. Alternatively, the groupdata2 and cvms package created by Ludvig are an easy solution.
 
 N.B. the predict() function generates log odds (the full scale between minus and plus infinity). Log odds > 0 indicates a choice of 1, below a choice of 0.
-N.N.B. you need to decide whether calculate performance on each single test fold or save all the prediction for test folds in one datase, so to calculate overall performance.
+N.N.B. you need to decide whether calculate performance on each single test fold or save all the prediction for test folds in one dataset, so to calculate overall performance.
 N.N.N.B. Now you have two levels of structure: subject and study. Should this impact your cross-validation?
 N.N.N.N.B. A more advanced solution could rely on the tidymodels set of packages (warning: Time-consuming to learn as the documentation is sparse, but totally worth it)
 
 
 
 ```{r}
-
 
 
 
