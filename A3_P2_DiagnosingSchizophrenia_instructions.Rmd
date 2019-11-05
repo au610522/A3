@@ -156,6 +156,58 @@ data <- rbind(data_dan, data_chi, data_jap)
 
 
 
+fold_results <- as.data.frame(matrix(data = 1:20, nrow = 5, ncol = 4))
+colnames(fold_results)[1] <- "TN"
+colnames(fold_results)[2] <- "FN"
+colnames(fold_results)[3] <- "TP"
+colnames(fold_results)[4] <- "FP"
+
+
+for (i in 1:max(data$folds)){
+  # Create test sets and training sets from each dataframe
+  test <- data[data$folds == i,]
+  train <- data[data$folds != i,]
+  
+  #logistic regression on train data
+  log_fit <- 
+    logistic_reg() %>%
+    set_mode("classification") %>% 
+    set_engine("glm") %>%
+      fit(Diagnosis ~ 0 + uID + uID:iqr, data = train)
+  
+  #get multiple at once
+  test_results <- 
+    test %>% 
+    select(Diagnosis) %>% 
+    mutate(
+      log_class = predict(log_fit, new_data = test) %>% 
+        pull(.pred_class),
+      log_prob  = predict(log_fit, new_data = test, type = "prob") %>% 
+        pull(.pred_SCZ),
+    )
+  test_results$true_CON <- 0
+  test_results$true_CON[test_results$Diagnosis == "CON" & test_results$log_class == "CON"] <- 1
+  
+  test_results$true_SCZ <- 0
+  test_results$true_SCZ[test_results$Diagnosis == "SCZ" & test_results$log_class == "SCZ"] <- 1
+  
+  
+  fold_results$TN[i] <- sum(test_results$true_CON)
+  fold_results$FN[i] <- length(test_results$true_CON) - sum(test_results$true_CON)
+  fold_results$TP[i] <- sum(test_results$true_SCZ)
+  fold_results$FP[i] <- length(test_results$true_SCZ) - sum(test_results$true_SCZ)
+}
+
+# Calculate sensitivity
+sum(fold_results$TP) / sum(fold_results$TP + fold_results$FN) # 0.33
+
+# Calculate sensitivity
+sum(fold_results$TN) / sum(fold_results$TN + fold_results$FP) # 0.10
+
+# Calculate accuracy
+sum(fold_results$TN + fold_results$TP) / sum(fold_results$TN + fold_results$FN + fold_results$TP + fold_results$FP) # 0.27
+
+
 
 
 
@@ -204,3 +256,65 @@ data <- rbind(data_dan, data_chi, data_jap)
 
 ```
 
+
+
+Identify best features for logistic regression
+``` {r}
+# Create test sets and training sets from each dataframe
+df_list <- partition(data, p = 0.2, cat_col = c("Diagnosis", "language"), id_col = "uID", list_out = T)
+test = df_list[[1]]
+train = df_list[[2]]
+
+# Clean environment
+rm(df_list, data_chi, data_dan, data_jap)
+
+#logistic regression on train data
+log_fit <- 
+  logistic_reg() %>%
+  set_mode("classification") %>% 
+  set_engine("glm") %>%
+  fit(Diagnosis ~ iqr + speech_rate + dur_pause:language + (1|uID), data = train)
+
+
+# Predict class
+log_class <- log_fit %>%
+  predict(new_data = test)
+
+# Get prob of class
+log_prop <- log_fit %>%
+  predict(new_data = test, type = "prob") %>%
+  pull(.pred_SCZ)
+
+
+#get multiple at once
+test_results <- 
+  test %>% 
+  select(Diagnosis) %>% 
+  mutate(
+    log_class = predict(log_fit, new_data = test) %>% 
+      pull(.pred_class),
+    log_prob  = predict(log_fit, new_data = test, type = "prob") %>% 
+      pull(.pred_SCZ),
+  )
+
+test_results %>% 
+  head(5) %>% 
+  knitr::kable() #examine the first 5
+
+metrics(test_results, truth = Diagnosis, estimate = log_class) %>% 
+  knitr::kable()
+
+# Making the ROC curve
+test_results %>%
+  roc_curve(truth = Diagnosis, log_prob) %>% 
+  autoplot()
+
+# Confusion matrix
+test$pred <- log_class$.pred_class # adding the predicted classes to the test data frame
+conf_mat(test, truth = "Diagnosis", estimate = "pred")
+
+
+
+
+
+```
