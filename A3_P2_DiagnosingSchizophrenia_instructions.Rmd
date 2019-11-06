@@ -8,21 +8,30 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
+# Loading libraries
 library(pacman)
-p_load(tidyverse, caret, lme4)
-pacman::p_load(pacman, groupdata2, tidymodels, cvms)
-pacman::p_load(randomForest)
+p_load(tidyverse, lme4, groupdata2, caret, tidymodels)
 
-
+# Loading data
 data_dan <- read.csv("data_dan.csv", header = T, sep = ",")
 data_chi <- read.csv("data_chi.csv", header = T, sep = ",")
 data_jap <- read.csv("data_jap.csv", header = T, sep = ",")
 
-# Binding together the datasets from the different languages
+# Assign languages
 data_dan$language <- "Danish"
 data_chi$language <- "Chinese"
 data_jap$language <- "Japanese"
+
+# Create single dataframe and clean environment
 data <- rbind(data_dan, data_chi, data_jap)
+rm(data_dan, data_chi, data_jap)
+
+# Remove columns from train set
+data <- data %>%
+  select(-Filename, -uPairID)
+
+# Set seed for randomization
+set.seed(5)
 
 ```
 
@@ -51,70 +60,46 @@ https://machinelearningmastery.com/machine-learning-ensembles-with-r/
 
 We first want to build a logistic regression to see whether you can diagnose schizophrenia from your best acoustic feature. Let's use the full dataset and calculate the different performance measures (accuracy, sensitivity, specificity, PPV, NPV, ROC curve). You need to think carefully as to how we should (or not) use study and subject ID.
 ```{r}
-# Set seed for randomization
-set.seed(5)
-
+### Preparing Testing and Training sets ###
 # Create test sets and training sets from each dataframe
-df_list <- partition(data, p = 0.2, cat_col = c("Diagnosis", "language"), id_col = "uID", list_out = T)
-test = df_list[[1]]
-train = df_list[[2]]
-
-# Clean environment
-rm(df_list, data_chi, data_dan, data_jap)
-
-# Remove columns from train set
-#train <- train %>%
-#  select(-Filename, -Study, -uID, -uPairID)
-
-# Remove columns from test set
-#test <- test %>%
-#  select(-Filename, -Study, -uID, -uPairID)
+test_train_list <- partition(data, p = 0.2, cat_col = c("Diagnosis", "language"), id_col = "uID", list_out = T) # splits data according to ID's and ensures same distribution of Diagnosis and language
+# Create the testing and training set
+test = test_train_list[[1]]
+train = test_train_list[[2]]
+rm(test_train_list) # Clean environment
 
 
-#logistic regression on train data
-log_fit <- 
-  logistic_reg() %>%
+
+### Logistic Regression from best feature ###
+# Create and fit the model on the training set
+log_reg <- logistic_reg() %>%
   set_mode("classification") %>% 
   set_engine("glm") %>%
-  fit(Diagnosis ~ 0 + uID + uID:iqr, data = train)
+  fit(Diagnosis ~ iqr + (1|uID), data = train)
 
-
-# Predict class
-log_class <- log_fit %>%
-  predict(new_data = test)
-
-# Get prob of class
-log_prop <- log_fit %>%
-  predict(new_data = test, type = "prob") %>%
-  pull(.pred_SCZ)
-
-
-#get multiple at once
-test_results <- 
-  test %>% 
+# Create a dataframe with true versus predicted values as well as probability values
+log_reg_results <- test %>% 
   select(Diagnosis) %>% 
-  mutate(
-    log_class = predict(log_fit, new_data = test) %>% 
-      pull(.pred_class),
-    log_prob  = predict(log_fit, new_data = test, type = "prob") %>% 
-      pull(.pred_SCZ),
-  )
+    mutate(
+      pred_class = predict(log_reg, new_data = test) %>% 
+        pull(.pred_class),
+      prob  = predict(log_reg, new_data = test, type = "prob") %>% 
+        pull(.pred_SCZ))
 
-test_results %>% 
-  head(5) %>% 
-  knitr::kable() #examine the first 5
-
-metrics(test_results, truth = Diagnosis, estimate = log_class) %>% 
-  knitr::kable()
-
-# Making the ROC curve
-test_results %>%
-  roc_curve(truth = Diagnosis, log_prob) %>% 
-  autoplot()
+# Get the model accuracy and kappa values
+metrics(log_reg_results, truth = Diagnosis, estimate = pred_class)
 
 # Confusion matrix
-test$pred <- log_class$.pred_class # adding the predicted classes to the test data frame
-conf_mat(test, truth = "Diagnosis", estimate = "pred")
+conf_mat(log_reg_results, truth = "Diagnosis", estimate = "pred_class")
+
+# Calculate sensitivity and specificty
+caret::sensitivity(log_reg_results$Diagnosis, log_reg_results$pred_class) # 0.86
+caret::specificity(log_reg_results$Diagnosis, log_reg_results$pred_class) # 0.41
+
+# Making the ROC curve
+roc_curve(data = log_reg_results, truth = Diagnosis, prob) %>% 
+  autoplot()
+
 ```
 
 
@@ -129,129 +114,66 @@ N.N.N.N.B. A more advanced solution could rely on the tidymodels set of packages
 
 ```{r}
 
-# Making folds for the datasets in each language
+# Create folds for cross validation
+# Initialize fold column
+data$fold <- 0
 
-data_dan$folds <- 0
-# Create folds for each diagnosis for Danish studies
-data_dan$folds[data_dan$Diagnosis == "CON"] <- createFolds(unique(data_dan$uID[data_dan$Diagnosis == "CON"]), k = 5, list = FALSE) # list = FALSE returns vector instead of list
+# Loop for assigning folds based on unique ID's and language
+for (i in c("Danish", "Chinese", "Japanese")){
+  data$fold[data$Diagnosis == "CON" & data$language == i] <-
+    createFolds(unique(data$uID[data$Diagnosis == "CON" & data$language == i]), k = 5, list = FALSE)
 
-data_dan$folds[data_dan$Diagnosis == "SCZ"] <- createFolds(unique(data_dan$uID[data_dan$Diagnosis == "SCZ"]), k = 5, list = FALSE)
-
-
-data_chi$folds <- 0
-# Create folds for each diagnosis for Chinese studies
-data_chi$folds[data_chi$Diagnosis == "CON"] <- createFolds(unique(data_chi$uID[data_chi$Diagnosis == "CON"]), k = 5, list = FALSE) # list = FALSE returns vector instead of list
-
-data_chi$folds[data_chi$Diagnosis == "SCZ"] <- createFolds(unique(data_chi$uID[data_chi$Diagnosis == "SCZ"]), k = 5, list = FALSE)
-
-
-data_jap$folds <- 0
-# Create folds for each diagnosis for Japanese studies
-data_jap$folds[data_jap$Diagnosis == "CON"] <- createFolds(unique(data_jap$uID[data_jap$Diagnosis == "CON"]), k = 5, list = FALSE) # list = FALSE returns vector instead of list
-
-data_jap$folds[data_jap$Diagnosis == "SCZ"] <- createFolds(unique(data_jap$uID[data_jap$Diagnosis == "SCZ"]), k = 5, list = FALSE)
-
-# Binding the data frames together
-data <- rbind(data_dan, data_chi, data_jap)
-
-
-
-fold_results <- as.data.frame(matrix(data = 1:20, nrow = 5, ncol = 4))
-colnames(fold_results)[1] <- "TN"
-colnames(fold_results)[2] <- "FN"
-colnames(fold_results)[3] <- "TP"
-colnames(fold_results)[4] <- "FP"
-
-
-for (i in 1:max(data$folds)){
-  # Create test sets and training sets from each dataframe
-  test <- data[data$folds == i,]
-  train <- data[data$folds != i,]
-  
-  #logistic regression on train data
-  log_fit <- 
-    logistic_reg() %>%
-    set_mode("classification") %>% 
-    set_engine("glm") %>%
-      fit(Diagnosis ~ 0 + uID + uID:iqr, data = train)
-  
-  #get multiple at once
-  test_results <- 
-    test %>% 
-    select(Diagnosis) %>% 
-    mutate(
-      log_class = predict(log_fit, new_data = test) %>% 
-        pull(.pred_class),
-      log_prob  = predict(log_fit, new_data = test, type = "prob") %>% 
-        pull(.pred_SCZ),
-    )
-  test_results$true_CON <- 0
-  test_results$true_CON[test_results$Diagnosis == "CON" & test_results$log_class == "CON"] <- 1
-  
-  test_results$true_SCZ <- 0
-  test_results$true_SCZ[test_results$Diagnosis == "SCZ" & test_results$log_class == "SCZ"] <- 1
-  
-  
-  fold_results$TN[i] <- sum(test_results$true_CON)
-  fold_results$FN[i] <- length(test_results$true_CON) - sum(test_results$true_CON)
-  fold_results$TP[i] <- sum(test_results$true_SCZ)
-  fold_results$FP[i] <- length(test_results$true_SCZ) - sum(test_results$true_SCZ)
+  data$fold[data$Diagnosis == "SCZ" & data$language == i] <-
+    createFolds(unique(data$uID[data$Diagnosis == "SCZ" & data$language == i]), k = 5, list = FALSE)
 }
 
-# Calculate sensitivity
-sum(fold_results$TP) / sum(fold_results$TP + fold_results$FN) # 0.33
+# Create dataframe for storing true and predicted values
+cv_results <- table("Diagnosis", "fold", "pred_class", "prob")
 
-# Calculate sensitivity
-sum(fold_results$TN) / sum(fold_results$TN + fold_results$FP) # 0.10
+# Crossvalidate and save predictions using for loop
+for (i in 1:max(data$fold)){
+  # Create test sets and training sets based on current iteration
+  cv_test <- data[data$fold == i,]
+  cv_train <- data[data$fold != i,]
+  
+  #logistic regression on train data
+  cv_log_reg <- 
+    logistic_reg() %>%
+    set_mode("classification") %>%
+    set_engine("glm") %>%
+      fit(Diagnosis ~ iqr + (1|uID), data = cv_train)
+  
+  #get multiple at once
+  fold_results <- 
+    cv_test %>% 
+    select(Diagnosis, fold) %>% 
+    mutate(
+      pred_class = predict(cv_log_reg, new_data = cv_test) %>% 
+        pull(.pred_class),
+      prob  = predict(cv_log_reg, new_data = cv_test, type = "prob") %>% 
+        pull(.pred_SCZ)
+    )
+  
+  # bind results to new dataframe
+  cv_results <- rbind(cv_results, fold_results)
+  
+  # Clean environemnt
+  rm(cv_train, cv_test, cv_log_reg)
+}
 
-# Calculate accuracy
-sum(fold_results$TN + fold_results$TP) / sum(fold_results$TN + fold_results$FN + fold_results$TP + fold_results$FP) # 0.27
+# remove first row of results dataframe
+cv_results <- cv_results[-1,]
 
+# Get the model accuracy and kappa values
+metrics(cv_results, truth = Diagnosis, estimate = pred_class)
 
+# Confusion matrix
+conf_mat(cv_results, truth = "Diagnosis", estimate = "pred_class")
 
+# Calculate sensitivity and specificty
+caret::sensitivity(cv_results$Diagnosis, cv_results$pred_class) # 0.57
+caret::specificity(cv_results$Diagnosis, cv_results$pred_class) # 0.53
 
-
-
-# dat <- groupdata2::fold(train, k = 4,
-#                                      cat_col = 'Diagnosis',
-#                                      id_col = 'uID')
-# dat[["Diagnosis"]] <- factor(dat[["Diagnosis"]])
-# 
-# # Create a model function (random forest in this case)
-# # that takes train_data and formula as arguments
-# # and returns the fitted model object
-# rf_model_fn <- function(train_data, formula){
-#     rand_forest(trees = 100, mode = "classification") %>%
-#       set_engine("glm") %>%
-#       fit(formula, data = train_data)
-#   }
-# 
-# # Create a predict function
-# # Usually just wraps stats::predict
-# # Takes test_data, model and formula arguments
-# # and returns vector with probabilities of class 1
-# # (this depends on the type of task, gaussian, binomial or multinomial)
-# rf_predict_fn <- function(test_data, model, formula){
-#     stats::predict(object = model, new_data = test_data, type = "prob")[[2]]
-#   }
-# 
-# # Now cross-validation
-# # Note the different argument names from cross_validate()
-# CV <- cross_validate_fn(
-#   dat,
-#   model_fn = rf_model_fn,
-#   formulas = c("Diagnosis ~ iqr", "Diagnosis ~ dur_pause"),
-#   fold_cols = '.folds',
-#   type = 'binomial',
-#   predict_fn = rf_predict_fn
-# )
-# #inspect data
-# CV %>% 
-#   select(1:6) %>% #select only the first 6 cols
-#   head(2) %>% #select only the first two rows
-#   knitr::kable()
-# 
-# CV
 
 
 ```
