@@ -78,7 +78,7 @@ log_reg <- logistic_reg() %>%
   fit(Diagnosis ~ iqr + (1|uID), data = train)
 
 # Create a dataframe with true versus predicted values as well as probability values
-log_reg_results <- test %>% 
+log_reg_results <- test %>%
   select(Diagnosis) %>% 
     mutate(
       pred_class = predict(log_reg, new_data = test) %>% 
@@ -86,19 +86,15 @@ log_reg_results <- test %>%
       prob  = predict(log_reg, new_data = test, type = "prob") %>% 
         pull(.pred_SCZ))
 
-# Get the model accuracy and kappa values
-metrics(log_reg_results, truth = Diagnosis, estimate = pred_class)
-
-# Confusion matrix
-conf_mat(log_reg_results, truth = "Diagnosis", estimate = "pred_class")
-
-# Calculate sensitivity and specificty
-caret::sensitivity(log_reg_results$Diagnosis, log_reg_results$pred_class) # 0.86
-caret::specificity(log_reg_results$Diagnosis, log_reg_results$pred_class) # 0.41
 
 # Making the ROC curve
 roc_curve(data = log_reg_results, truth = Diagnosis, prob) %>% 
   autoplot()
+
+
+# Get performance measures
+confmat <- confusionMatrix(log_reg_results$Diagnosis, log_reg_results$pred_class)
+confmat
 
 ```
 
@@ -158,7 +154,7 @@ for (i in 1:max(data$fold)){
   cv_results <- rbind(cv_results, fold_results)
   
   # Clean environemnt
-  rm(cv_train, cv_test, cv_log_reg)
+  rm(cv_train, cv_test, cv_log_reg, fold_results)
 }
 
 # remove first row of results dataframe
@@ -171,7 +167,7 @@ metrics(cv_results, truth = Diagnosis, estimate = pred_class)
 conf_mat(cv_results, truth = "Diagnosis", estimate = "pred_class")
 
 # Calculate sensitivity and specificty
-caret::sensitivity(cv_results$Diagnosis, cv_results$pred_class) # 0.57
+caret::sensitivity(cv_results$Diagnosis, cv_results$pred_class) # 0.56
 caret::specificity(cv_results$Diagnosis, cv_results$pred_class) # 0.53
 
 
@@ -182,61 +178,33 @@ caret::specificity(cv_results$Diagnosis, cv_results$pred_class) # 0.53
 
 Identify best features for logistic regression
 ``` {r}
-# Create test sets and training sets from each dataframe
-df_list <- partition(data, p = 0.2, cat_col = c("Diagnosis", "language"), id_col = "uID", list_out = T)
-test = df_list[[1]]
-train = df_list[[2]]
-
-# Clean environment
-rm(df_list, data_chi, data_dan, data_jap)
 
 #logistic regression on train data
-log_fit <- 
-  logistic_reg() %>%
+log_reg <- logistic_reg() %>%
   set_mode("classification") %>% 
   set_engine("glm") %>%
   fit(Diagnosis ~ iqr + speech_rate + dur_pause:language + (1|uID), data = train)
 
 
-# Predict class
-log_class <- log_fit %>%
-  predict(new_data = test)
-
-# Get prob of class
-log_prop <- log_fit %>%
-  predict(new_data = test, type = "prob") %>%
-  pull(.pred_SCZ)
-
-
-#get multiple at once
-test_results <- 
-  test %>% 
+# Create a dataframe with true versus predicted values as well as probability valuestest_results <- 
+log_reg_results <- test %>%
   select(Diagnosis) %>% 
   mutate(
-    log_class = predict(log_fit, new_data = test) %>% 
+    pred_class = predict(log_reg, new_data = test) %>% 
       pull(.pred_class),
-    log_prob  = predict(log_fit, new_data = test, type = "prob") %>% 
+    prob  = predict(log_reg, new_data = test, type = "prob") %>% 
       pull(.pred_SCZ),
   )
 
-test_results %>% 
-  head(5) %>% 
-  knitr::kable() #examine the first 5
-
-metrics(test_results, truth = Diagnosis, estimate = log_class) %>% 
-  knitr::kable()
 
 # Making the ROC curve
-test_results %>%
-  roc_curve(truth = Diagnosis, log_prob) %>% 
+roc_curve(data = log_reg_results, truth = Diagnosis, prob) %>% 
   autoplot()
 
-# Confusion matrix
-test$pred <- log_class$.pred_class # adding the predicted classes to the test data frame
-conf_mat(test, truth = "Diagnosis", estimate = "pred")
 
-
-
+# Get performance measures
+confmat <- confusionMatrix(log_reg_results$Diagnosis, log_reg_results$pred_class)
+confmat
 
 
 ```
