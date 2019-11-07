@@ -160,17 +160,13 @@ for (i in 1:max(data$fold)){
 # remove first row of results dataframe
 cv_results <- cv_results[-1,]
 
-# Get the model accuracy and kappa values
-metrics(cv_results, truth = Diagnosis, estimate = pred_class)
+# Create ROC curve
+roc_curve(data = cv_results, truth = Diagnosis, prob) %>% 
+  autoplot()
 
-# Confusion matrix
-conf_mat(cv_results, truth = "Diagnosis", estimate = "pred_class")
-
-# Calculate sensitivity and specificty
-caret::sensitivity(cv_results$Diagnosis, cv_results$pred_class) # 0.56
-caret::specificity(cv_results$Diagnosis, cv_results$pred_class) # 0.53
-
-
+# Get performance measures
+confmat <- confusionMatrix(cv_results$Diagnosis, cv_results$pred_class)
+confmat
 
 ```
 
